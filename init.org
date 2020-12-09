@@ -2,93 +2,6 @@
 #+author: Bailey Feldewerd
 #+property: header-args:emacs-lisp :tangle ./init.el
 
-* EXWM
-** Window Management
-#+begin_src emacs-lisp
-  (defun bf/exwm-update-class ()
-    (exwm-workspace-rename-buffer exwm-class-name))
-
-  (use-package exwm
-    :config
-    ;; Set the default number of workspaces
-    (setq exwm-workspace-number 5)
-
-    ;; Make the focus follow the mouse
-    (setq mouse-autoselect-window t
-        focus-follows-mouse t)
-
-    ;; When window "class" updates, use it to set the buffer name
-    (add-hook 'exwm-update-class-hook #'bf/exwm-update-class)
-
-    ;; Set the screen resolution
-    (require 'exwm-randr)
-    (exwm-randr-enable)
-    (start-process-shell-command "xrandr" nil "xrandr --output eDP1 --off --output DP1 --primary --mode 2560x1440 --pos 0x0 --rotate normal --output DP2 --off --output HDMI1 --off --output VIRTUAL1 --off")
-
-    ;; Load the system tray
-    (require 'exwm-systemtray)
-    (exwm-systemtray-enable)
-
-    ;; These keys should always pass through to Emacs
-    (setq exwm-input-prefix-keys
-          '(?\C-x
-            ?\C-u
-            ?\C-h
-            ?\M-x
-            ?\M-`
-            ?\M-&
-            ?\M-:
-            ?\C-\M-j  ;;Buffer list
-            ?\C-\ ))  ;; Ctrl+Space
-
-    ;; Ctrl+q will enable the next key to be sent directly
-    (define-key exwm-mode-map [?\C-q] 'exwm-input-send-next-key)
-
-    ;; Set up global key bindings. These always work, no matter the input state!
-    ;; Keep in mind that changing this list after EXWM initializes has no effect.
-    (setq exwm-input-global-keys
-          `(
-            ;; Reset to line-mode (C-c C-k switches to char-mode via exwm-input-release-keyboard)
-            ([?\s-s] . exwm-reset)
-
-            ;; Move between windows
-            ([?\s-h] . windmove-left)
-            ([?\s-j] . windmove-down)
-            ([?\s-k] . windmove-up)
-            ([?\s-l] . windmove-right)
-
-            ;; Launch applications via shell command
-            ([?\s-r] . (lambda (command)
-                         (interactive (list (read-shell-command "Run: ")))
-                         (start-process-shell-command command nil command)))
-
-            ;; Switch workspace
-            ([?\s-w] . exwm-workspace-switch)
-
-            ;; `s-N':  Switch to certain workspace with Super plus a number key (0-9)
-            ,@(mapcar (lambda (i)
-                        `(,(kbd (format "s-%d" i)).
-                          (lambda ()
-                            (interactive)
-                            (exwm-workspace-switch-create ,i))))
-                      (number-sequence 0 9))))
-          
-    (exwm-enable))
-#+end_src
-
-** Window Transparency
-#+begin_src emacs-lisp
-    ;; Make the windows transparent
-    (set-frame-parameter (selected-frame) 'alpha '(70 . 70))
-    (add-to-list 'default-frame-alist '(alpha . (70 . 70)))
-    (start-process-shell-command "picom" nil "picom")
-#+end_src
-
-** Wallpaper selection
-#+begin_src emacs-lisp
-  (start-process-shell-command "feh" nil "feh --bg-fill ~/.config/bspwm/wall3.jpg")
-#+end_src
-
 * Startup Performance
 Make startup faster by reducing the frequency of garbage collection and then use a hook to measure Emacs startup time.
 #+begin_src emacs-lisp
@@ -254,6 +167,11 @@ Spacemacs.
       (split-window-vertically)
       (evil-window-down 1))
 
+    (defun bf/kill-buffer ()
+      "Kill the current buffer"
+      (interactive)
+      (kill-buffer))
+
     (general-create-definer bf/leader-keys
       :keymaps '(normal insert visual emacs)
       :prefix "SPC"
@@ -289,7 +207,7 @@ Spacemacs.
       ;; Buffers
       "b" '(:ignore t :which-key "buffers")
       "bb" 'counsel-switch-buffer
-      "bk" 'kill-buffer
+      "bk" '(bf/kill-buffer :which-key "kill-buffer")
       "bd" 'kill-buffer-and-window
       "bl" 'buffer-menu
 
@@ -334,6 +252,7 @@ Clean up Emacs' user interface, make it more minimal.
   ;(setq window-divider-default-places t)
 
   (window-divider-mode 1)  ; Turn on window dividers
+  (electric-pair-mode 1)   ; Turn on bracket completion
   (scroll-bar-mode -1)     ; Turn off the scroll bar
   (tool-bar-mode -1)       ; Turn off the tool bar
   (tooltip-mode -1)        ; Turn off tool-tips
@@ -370,7 +289,7 @@ Enable line numbers and Customizer their format
 I like to use the doom themes because they are well-designed and integrate with a lot of Emacs packages
 #+begin_src emacs-lisp
   (use-package doom-themes :defer t)
-  (load-theme 'gruvbox t)
+  (load-theme 'doom-gruvbox t)
   ;;(doom-themes-visual-bell-config)
   (use-package all-the-icons)
 #+end_src
@@ -472,7 +391,11 @@ Counsel uses different functions that are more helpful and show more info with ~
            ("C-x b" . counsel-ibuffer)
            ("C-x C-f" . counsel-find-file)
            :map minibuffer-local-map
-           ("C-r" . 'counsel-minibuffer-history)))
+           ("C-r" . 'counsel-minibuffer-history))
+    :custom
+    (counsel-linux-app-format-function #'counsel-linux-app-format-function-name-only)
+    :config
+    (counsel-mode 1))
 #+end_src
 
 * Better Help with Helpful
@@ -528,8 +451,8 @@ Helpful lets me see more info when using the built in help command
 ** Auto-tangle Configuration Files
 #+begin_src emacs-lisp
   (defun bf/org-babel-tangle-config ()
-    (when (string-equal (buffer-file-name)
-                        (expand-file-name "~/.emacs.d/init.org"))
+    (when (string-equal (file-name-directory (buffer-file-name))
+                        (expand-file-name "~/.emacs.d/"))
       ;; Dynamic scoping to the rescue
       (let ((org-confirm-babel-evaluate nil))
         (org-babel-tangle))))
@@ -569,8 +492,13 @@ Run the command ~C-c o~ to show the window
 * Language Servers with LSP-MODE
 ** Basic Configuration
 #+begin_src emacs-lisp
+  (defun bf/lsp-mode-setup ()
+    (setq lsp-headerline-breadcrumb-segments '(path-up-to-project file symbols))
+    (lsp-headerline-breadcrumb-mode))
+
   (use-package lsp-mode
     :commands (lsp lsp-deferred)
+    :hook (lsp-mode . bf/lsp-mode-setup)
     :init
     (setq lsp-keymap-prefix "C-c l") ;; Or 'C-l', 's-l'
     :config
@@ -580,7 +508,9 @@ Run the command ~C-c o~ to show the window
 ** LSP-UI
 #+begin_src emacs-lisp
   (use-package lsp-ui
-    :hook (lsp-mode . lsp-ui-mode))
+    :hook (lsp-mode . lsp-ui-mode)
+    :custom
+    (lsp-ui-doc-position 'bottom))
 #+end_src
 
 ** LSP-Treemacs
@@ -611,6 +541,23 @@ Run the command ~C-c o~ to show the window
     :hook (company-mode . company-box-mode))
 #+end_src
 
+** Yasnippet For Snippets
+#+begin_src emacs-lisp
+  ;; (use-package yasnippet
+  ;;   :after lsp
+  ;;   :config
+  ;;   (yas-global-mode))
+
+  ;; (use-package yasnippet-snippets
+  ;;   :after yasnippet)
+#+end_src
+
+** FlyCheck for error checking
+#+begin_src emacs-lisp
+  (use-package flycheck
+    :init (global-flycheck-mode))
+#+end_src
+
 ** Languages
 *** TypeScript
 #+begin_src emacs-lisp
@@ -618,18 +565,39 @@ Run the command ~C-c o~ to show the window
     :mode "\\.ts\\'"
     :hook (typescript-mode . lsp-deferred)
     :config
-    (setq typescript-indent-level 2))
+    (setq typescript-indent-level 2)
+    (require 'dap-node)
+    (dap-node-setup)) ;; Automatically installs Node debug adapter if needed
 #+end_src
 
 *** Java
 #+begin_src emacs-lisp
   (use-package lsp-java
-    :hook (java-mode . lsp-deferred))
+    :hook (java-mode . lsp-deferred)
+    :config
+    (require 'dap-java))
+#+end_src
+
+*** Python
+#+begin_src emacs-lisp
+  (use-package lsp-python-ms
+    :init (setq lsp-python-ms-auto-install-server t)
+    :hook (python-mode . (lambda ()
+                           (require 'lsp-python-ms)
+                           (lsp-deferred)))
+    :custom
+    (dap-python-debugger 'debugpy)
+    :config
+    (require 'dap-python))
+
+  (use-package pyvenv
+    :config
+    (pyvenv-mode 1))
 #+end_src
 
 * Debugging with DAP-MODE
 #+begin_src emacs-lisp
-  ;;(use-package dap-mode)
+  (use-package dap-mode)
 #+end_src
 
 * Dump of whole file

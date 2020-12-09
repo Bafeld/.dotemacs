@@ -254,6 +254,11 @@ Spacemacs.
       (split-window-vertically)
       (evil-window-down 1))
 
+    (defun bf/kill-buffer ()
+      "Kill the current buffer"
+      (interactive)
+      (kill-buffer))
+
     (general-create-definer bf/leader-keys
       :keymaps '(normal insert visual emacs)
       :prefix "SPC"
@@ -289,7 +294,7 @@ Spacemacs.
       ;; Buffers
       "b" '(:ignore t :which-key "buffers")
       "bb" 'counsel-switch-buffer
-      "bk" 'kill-buffer
+      "bk" '(bf/kill-buffer :which-key "kill-buffer")
       "bd" 'kill-buffer-and-window
       "bl" 'buffer-menu
 

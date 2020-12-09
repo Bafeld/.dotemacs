@@ -1,80 +1,3 @@
-(defun bf/exwm-update-class ()
-  (exwm-workspace-rename-buffer exwm-class-name))
-
-(use-package exwm
-  :config
-  ;; Set the default number of workspaces
-  (setq exwm-workspace-number 5)
-
-  ;; Make the focus follow the mouse
-  (setq mouse-autoselect-window t
-      focus-follows-mouse t)
-
-  ;; When window "class" updates, use it to set the buffer name
-  (add-hook 'exwm-update-class-hook #'bf/exwm-update-class)
-
-  ;; Set the screen resolution
-  (require 'exwm-randr)
-  (exwm-randr-enable)
-  (start-process-shell-command "xrandr" nil "xrandr --output eDP1 --off --output DP1 --primary --mode 2560x1440 --pos 0x0 --rotate normal --output DP2 --off --output HDMI1 --off --output VIRTUAL1 --off")
-
-  ;; Load the system tray
-  (require 'exwm-systemtray)
-  (exwm-systemtray-enable)
-
-  ;; These keys should always pass through to Emacs
-  (setq exwm-input-prefix-keys
-        '(?\C-x
-          ?\C-u
-          ?\C-h
-          ?\M-x
-          ?\M-`
-          ?\M-&
-          ?\M-:
-          ?\C-\M-j  ;;Buffer list
-          ?\C-\ ))  ;; Ctrl+Space
-
-  ;; Ctrl+q will enable the next key to be sent directly
-  (define-key exwm-mode-map [?\C-q] 'exwm-input-send-next-key)
-
-  ;; Set up global key bindings. These always work, no matter the input state!
-  ;; Keep in mind that changing this list after EXWM initializes has no effect.
-  (setq exwm-input-global-keys
-        `(
-          ;; Reset to line-mode (C-c C-k switches to char-mode via exwm-input-release-keyboard)
-          ([?\s-s] . exwm-reset)
-
-          ;; Move between windows
-          ([?\s-h] . windmove-left)
-          ([?\s-j] . windmove-down)
-          ([?\s-k] . windmove-up)
-          ([?\s-l] . windmove-right)
-
-          ;; Launch applications via shell command
-          ([?\s-r] . (lambda (command)
-                       (interactive (list (read-shell-command "Run: ")))
-                       (start-process-shell-command command nil command)))
-
-          ;; Switch workspace
-          ([?\s-w] . exwm-workspace-switch)
-
-          ;; `s-N':  Switch to certain workspace with Super plus a number key (0-9)
-          ,@(mapcar (lambda (i)
-                      `(,(kbd (format "s-%d" i)).
-                        (lambda ()
-                          (interactive)
-                          (exwm-workspace-switch-create ,i))))
-                    (number-sequence 0 9))))
-
-  (exwm-enable))
-
-;; Make the windows transparent
-(set-frame-parameter (selected-frame) 'alpha '(70 . 70))
-(add-to-list 'default-frame-alist '(alpha . (70 . 70)))
-(start-process-shell-command "picom" nil "picom")
-
-(start-process-shell-command "feh" nil "feh --bg-fill ~/.config/bspwm/wall3.jpg")
-
 ;; The default is 800  kilobytes. Measured in bytes.
 (setq gc-cons-threshold  (* 50 1000 1000))
 
@@ -205,6 +128,11 @@
     (split-window-vertically)
     (evil-window-down 1))
 
+  (defun bf/kill-buffer ()
+    "Kill the current buffer"
+    (interactive)
+    (kill-buffer))
+
   (general-create-definer bf/leader-keys
     :keymaps '(normal insert visual emacs)
     :prefix "SPC"
@@ -240,7 +168,7 @@
     ;; Buffers
     "b" '(:ignore t :which-key "buffers")
     "bb" 'counsel-switch-buffer
-    "bk" 'kill-buffer
+    "bk" '(bf/kill-buffer :which-key "kill-buffer")
     "bd" 'kill-buffer-and-window
     "bl" 'buffer-menu
 
@@ -276,6 +204,7 @@
 ;(setq window-divider-default-places t)
 
 (window-divider-mode 1)  ; Turn on window dividers
+(electric-pair-mode 1)   ; Turn on bracket completion
 (scroll-bar-mode -1)     ; Turn off the scroll bar
 (tool-bar-mode -1)       ; Turn off the tool bar
 (tooltip-mode -1)        ; Turn off tool-tips
@@ -302,7 +231,7 @@
   (add-hook mode (lambda () (display-line-numbers-mode 0))))
 
 (use-package doom-themes :defer t)
-(load-theme 'gruvbox t)
+(load-theme 'doom-gruvbox t)
 ;;(doom-themes-visual-bell-config)
 (use-package all-the-icons)
 
@@ -363,7 +292,11 @@
          ("C-x b" . counsel-ibuffer)
          ("C-x C-f" . counsel-find-file)
          :map minibuffer-local-map
-         ("C-r" . 'counsel-minibuffer-history)))
+         ("C-r" . 'counsel-minibuffer-history))
+  :custom
+  (counsel-linux-app-format-function #'counsel-linux-app-format-function-name-only)
+  :config
+  (counsel-mode 1))
 
 (use-package helpful
   :custom
@@ -405,8 +338,8 @@
 (add-to-list 'org-structure-template-alist '("py" . "src python"))
 
 (defun bf/org-babel-tangle-config ()
-  (when (string-equal (buffer-file-name)
-                      (expand-file-name "~/.emacs.d/init.org"))
+  (when (string-equal (file-name-directory (buffer-file-name))
+                      (expand-file-name "~/.emacs.d/"))
     ;; Dynamic scoping to the rescue
     (let ((org-confirm-babel-evaluate nil))
       (org-babel-tangle))))
@@ -430,15 +363,22 @@
   :config
   (global-command-log-mode))
 
+(defun bf/lsp-mode-setup ()
+  (setq lsp-headerline-breadcrumb-segments '(path-up-to-project file symbols))
+  (lsp-headerline-breadcrumb-mode))
+
 (use-package lsp-mode
   :commands (lsp lsp-deferred)
+  :hook (lsp-mode . bf/lsp-mode-setup)
   :init
   (setq lsp-keymap-prefix "C-c l") ;; Or 'C-l', 's-l'
   :config
   (lsp-enable-which-key-integration t))
 
 (use-package lsp-ui
-  :hook (lsp-mode . lsp-ui-mode))
+  :hook (lsp-mode . lsp-ui-mode)
+  :custom
+  (lsp-ui-doc-position 'bottom))
 
 (use-package lsp-treemacs
   :after lsp)
@@ -459,13 +399,42 @@
 (use-package company-box
   :hook (company-mode . company-box-mode))
 
+;; (use-package yasnippet
+;;   :after lsp
+;;   :config
+;;   (yas-global-mode))
+
+;; (use-package yasnippet-snippets
+;;   :after yasnippet)
+
+(use-package flycheck
+  :init (global-flycheck-mode))
+
 (use-package typescript-mode
   :mode "\\.ts\\'"
   :hook (typescript-mode . lsp-deferred)
   :config
-  (setq typescript-indent-level 2))
+  (setq typescript-indent-level 2)
+  (require 'dap-node)
+  (dap-node-setup)) ;; Automatically installs Node debug adapter if needed
 
 (use-package lsp-java
-  :hook (java-mode . lsp-deferred))
+  :hook (java-mode . lsp-deferred)
+  :config
+  (require 'dap-java))
 
-;;(use-package dap-mode)
+(use-package lsp-python-ms
+  :init (setq lsp-python-ms-auto-install-server t)
+  :hook (python-mode . (lambda ()
+                         (require 'lsp-python-ms)
+                         (lsp-deferred)))
+  :custom
+  (dap-python-debugger 'debugpy)
+  :config
+  (require 'dap-python))
+
+(use-package pyvenv
+  :config
+  (pyvenv-mode 1))
+
+(use-package dap-mode)
